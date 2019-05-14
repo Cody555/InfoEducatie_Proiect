@@ -1,0 +1,1514 @@
+PlayerController.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class PlayerController : MonoBehaviour {
+
+    private Rigidbody2D rb;
+    public Transform transform;
+
+    private float inputHorizontal;
+    private float inputVertical;
+    [Range(5f, 50f)] public float speed;
+    [Range(0.1f, 7f)] public float vSpeed;
+
+    public Transform groundCheck;
+    public float groundRadiusCheck;
+    public LayerMask whatIsGround;
+
+    [Range(5f, 50f)] public float jumpForce;
+    public bool isGrounded;
+    public bool isJumping;
+
+    [Range(0.1f, 1f)] public float jumpTime;
+    private float jumpTimeCounter;
+
+    public Transform ladderCheck;
+    public float ladderRadiusCheck;
+    public LayerMask whatIsLadder;
+    public bool isClimbing;
+    private float gravityScale;
+    
+    public float run;
+    public float jump;
+    public bool isDashing;
+    
+    [Range(0.01f, 2f)] public float cooldown;
+    private float dashCooldown;
+    [Range(0.1f, 20f)] public float dashPower;
+    [Range(0.01f, 0.5f)] public float dashTimeCounter;
+    private float initSpeed;
+    private float keyDownTime;
+
+    private Animator animator;
+    private AudioSource audioSource;
+    private void Start()
+    {
+        audioSource = GetComponent<AudioSource>();
+        rb = GetComponent<Rigidbody2D>();
+        gravityScale = rb.gravityScale;
+
+        isClimbing = false;
+        isDashing = false;
+        
+        dashCooldown = 0;
+        initSpeed = speed;
+
+        animator = GetComponent<Animator>();
+    }
+
+    private void Update()
+    {
+        Jump();
+        Dash();
+        Animation();
+    }
+
+    private void FixedUpdate()
+    {
+        inputHorizontal = Input.GetAxis("Horizontal") * speed;
+        rb.velocity = new Vector2(inputHorizontal, rb.velocity.y);
+
+        Flip();
+        // Climb();
+
+        run = System.Math.Abs(rb.velocity.x);
+        jump = System.Math.Abs(rb.velocity.y);
+    }
+
+    private void Flip()
+    {
+        if(inputHorizontal > 0)
+        {
+            transform.eulerAngles = new Vector3(0, 0, 0);
+        }
+        else if(inputHorizontal < 0)
+        {
+            transform.eulerAngles = new Vector3(0, 180, 0);
+        }
+    }
+
+    private void Jump()
+    {
+        isGrounded = Physics2D.OverlapCircle(groundCheck.position, groundRadiusCheck, whatIsGround);
+
+        if (isGrounded == true && Input.GetKeyDown(KeyCode.W))
+        {
+            isJumping = true;
+            jumpTimeCounter = jumpTime;
+            rb.velocity = Vector2.up * jumpForce;
+        }
+
+        if (Input.GetKey(KeyCode.W) && isJumping == true)
+        {
+            if (jumpTimeCounter > 0)
+            {
+                rb.velocity = Vector2.up * jumpForce;
+                jumpTimeCounter -= Time.deltaTime;
+            }
+            else
+            {
+                isJumping = false;
+            }
+        }
+
+        if (Input.GetKeyUp(KeyCode.W))
+        {
+            isJumping = false;
+        }
+    }
+    /*
+    private void Climb()
+    {
+        RaycastHit2D hitInfo = Physics2D.Raycast(transform.position, Vector2.up, ladderRadiusCheck, whatIsLadder);
+
+        if (hitInfo.collider != null)
+        {
+            if (Input.GetButtonDown("Vertical"))
+            {
+                isClimbing = true;
+            }
+            else
+            {
+                if (Input.GetButtonDown("Horizontal") && isGrounded == true)
+                {
+                    isClimbing = false;
+                }
+            }
+        }
+
+        if(isClimbing == true && hitInfo.collider != null)
+        {
+            isGrounded = false;
+            inputVertical = Input.GetAxisRaw("Vertical") * vSpeed;
+            rb.velocity = new Vector2(rb.velocity.x, inputVertical * vSpeed);
+            rb.gravityScale = 0;
+        }
+        else
+        {
+            rb.gravityScale = gravityScale;
+        }
+    }*/
+
+    private void Dash()
+    {
+        if (Time.time > keyDownTime + dashTimeCounter)
+        {
+            speed = initSpeed;
+            Debug.Log("Speed reset");
+        }
+
+        if (Time.time > dashCooldown)
+        {
+            if (Input.GetKeyDown(KeyCode.J))
+            {
+                dashCooldown = Time.time + cooldown;
+                keyDownTime = Time.time;
+                Debug.Log("Dash is on cooldown");
+
+                if (Time.time < keyDownTime + dashTimeCounter)
+                {
+                    isDashing = true;
+                    speed += dashPower;
+                    Debug.Log("Player dashing");
+                }
+            }
+        }
+    }
+
+    private void Animation()
+    {
+        animator.SetFloat("isRunning", run);
+        animator.SetFloat("isJumping", jump);
+        animator.SetBool("isGrounded", isGrounded);
+        if (isDashing == true)
+        {
+            animator.SetTrigger("isDashing");
+            isDashing = false;
+        }
+    }
+
+    /*
+    public void SavePlayer()
+    {
+        SaveSystem.SavePlayer(this);
+    }
+
+    public void LoadPlayer()
+    {
+        PlayerData data = SaveSystem.LoadPlayer();
+
+        Vector3 position;
+        position.x = data.position[0];
+        position.y = data.position[1];
+        position.z = data.position[2];
+        transform.position = position;
+    }
+    */
+
+    public void RunSound(AudioClip whichSound)
+    {
+        audioSource.PlayOneShot(whichSound);
+    }
+}
+
+GameManager.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+using UnityEngine.SceneManagement;
+
+public class GameManager : MonoBehaviour
+{
+    public static GameManager instance = new GameManager();
+
+    public Animator canvasAnimator;
+    public MenuManager menuManager;
+
+    public bool gameIsPaused = false;
+    private int loadedScene;
+    private bool sceneIsLoaded = true;
+
+    public Vector3[] enemiesPos;
+    public GameObject[] enemies;
+    public Vector3 playerPos;
+    public GameObject player;
+
+    private int enemiesNumber;
+
+    public Text scoreText;
+    public int score;
+
+    public bool getPoint = false;
+    public float initScoreTimeCounter;
+    public float scoreTimeCounter;
+    public bool toGame = true;
+    public bool scoreToPause = false;
+    void Awake()
+    {
+        loadedScene = SceneManager.GetActiveScene().buildIndex;
+
+        canvasAnimator = GameObject.Find("Canvas").GetComponent<Animator>();
+
+        if (loadedScene == 1)
+        {
+            menuManager = GameObject.FindGameObjectWithTag("MainMenuManager").GetComponent<MenuManager>();
+        }
+    }
+
+    private void Start()
+    {
+        GetEntities();
+        scoreTimeCounter = initScoreTimeCounter;
+    }
+
+    void FixedUpdate()
+    {
+        if (loadedScene == SceneManager.GetActiveScene().buildIndex && sceneIsLoaded == true)
+        {
+            canvasAnimator.SetBool("goTo MainMenu", false);
+            canvasAnimator.SetBool("goTo Game", true);
+
+            sceneIsLoaded = false;
+        }
+
+        if (loadedScene == 1)
+        {
+            GetEntities();
+        }
+
+        if (menuManager.menuSlot1 == true)
+        {
+            LoadSlot1();
+            menuManager.menuSlot1 = false;
+        }
+        else if (menuManager.menuSlot2 == true)
+        {
+            LoadSlot2();
+            menuManager.menuSlot2 = false;
+        }
+    }
+
+    public void GetEntities()
+    {
+        player = GameObject.FindGameObjectWithTag("Player");
+        playerPos = player.transform.position;
+
+        enemies = GameObject.FindGameObjectsWithTag("Enemy");
+        enemiesNumber = enemies.Length;
+        Debug.Log("Number of enemies:" + enemiesNumber);
+
+        enemiesPos = new Vector3[enemiesNumber];
+
+        for (int i = 0; i < enemiesNumber; i++)
+        {
+            enemiesPos[i] = enemies[i].transform.position;
+        }
+    }
+
+    public void SaveSlot1()
+    {
+        ES3.Save<Vector3>("Player_Position", playerPos, "SaveSlot1.txt");
+        Debug.Log("Saved player position: " + playerPos + " to slot 1");
+
+        for (int i = 0; i < enemiesNumber; i++)
+        {
+            ES3.Save<Vector3>("Enemy_" + i + "_Position", enemiesPos[i], "SaveSlot1.txt");
+            Debug.Log("Saved enemy " + i + "'s position: " + enemiesPos[i] + " to slot 1");
+        }
+
+        ES3.Save<int>("Score", score, "SaveSlot1.txt");
+    }
+
+    public void SaveSlot2()
+    {
+        ES3.Save<Vector3>("Player_Position", playerPos, "SaveSlot2.txt");
+        Debug.Log("Saved player position: " + playerPos + " to slot 2");
+
+        for (int i = 0; i < enemiesNumber; i++)
+        {
+            ES3.Save<Vector3>("Enemy_" + i + "_Position", enemiesPos[i], "SaveSlot2.txt");
+            Debug.Log("Saved enemy " + i + "'s position: " + enemiesPos[i] + " to slot 2");
+        }
+
+        ES3.Save<int>("Score", score, "SaveSlot2.txt");
+    }
+
+    public void LoadSlot1()
+    {
+        if (ES3.FileExists("SaveSlot1.txt") == false)
+        {
+            Debug.Log("Save file 1 doesn't exist");
+        }
+        else
+        {
+            playerPos = ES3.Load<Vector3>("Player_Position", "SaveSlot1.txt");
+            player.transform.position = playerPos;
+
+            for (int i = 0; i < enemiesNumber; i++)
+            {
+                enemiesPos[i] = ES3.Load<Vector3>("Enemy_" + i + "_Position", "SaveSlot1.txt");
+                enemies[i].transform.position = enemiesPos[i];
+            }
+        }
+
+        score = ES3.Load<int>("Score", "SaveSlot1.txt");
+    }
+
+    public void LoadSlot2()
+    {
+        if (ES3.FileExists("SaveSlot2.txt") == false)
+        {
+            Debug.Log("Save file 2 doesn't exist");
+        }
+        else
+        {
+            playerPos = ES3.Load<Vector3>("Player_Position", "SaveSlot2.txt");
+            player.transform.position = playerPos;
+
+            for (int i = 0; i < enemiesNumber; i++)
+            {
+                enemiesPos[i] = ES3.Load<Vector3>("Enemy_" + i + "_Position", "SaveSlot2.txt");
+                enemies[i].transform.position = enemiesPos[i];
+            }
+        }
+
+        score = ES3.Load<int>("Score", "SaveSlot1.txt");
+    }
+
+    public void ScoreIncrease(int points)
+    {
+        score = score + points;
+        Debug.Log("Score increase");
+        ShowScore();
+    }
+
+    public void ShowScore()
+    {
+        scoreText.text = "Score " + score.ToString();
+        Debug.Log("Your score is: " + score);
+    }
+
+    public void ScoreCountdown()
+    {
+        scoreTimeCounter -= Time.deltaTime;
+
+        if (scoreTimeCounter <= 0f)
+        {
+            toGame = true;
+        }
+    }
+}
+
+PointScript.cs
+
+using UnityEngine;
+using System.Collections;
+using System.Collections.Generic;
+
+public class PointScript : MonoBehaviour
+{
+    private GameManager gameManager;
+    private PlayerController playerController;
+    public int pointsValue;
+    void Start()
+    {
+        GameObject gameManagerObject = GameObject.FindWithTag("GameManager");
+        if (gameManagerObject != null)
+        {
+            gameManager = gameManagerObject.GetComponent<GameManager>();
+        }
+        if (gameManager == null)
+        {
+            Debug.Log("Cannot find 'GameManager' script");
+        }
+    }
+    
+    private void OnTriggerEnter2D(Collider2D other)
+    {
+        if (other.tag == "Player")
+        {
+            gameManager.ScoreIncrease(pointsValue);
+            gameManager.getPoint = true;
+
+            Destroy(gameObject);
+        }
+    }
+}
+
+PauseMenu.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+
+public class PauseMenu : MonoBehaviour
+{
+    public Animator animator;
+
+    public GameManager gameManager;
+
+    public GameObject[] enemies;
+
+    public Rigidbody2D[] enemiesRb;
+    public Rigidbody2D playerRb;
+
+    public AudioSource scoreIncreaseSound;
+    void Start()
+    {
+        animator = GetComponent<Animator>();
+        scoreIncreaseSound = GetComponent<AudioSource>();
+
+        playerRb = GameObject.FindGameObjectWithTag("Player").GetComponent<Rigidbody2D>();
+        EntitiesRb();
+    }
+    void FixedUpdate()
+    {
+        if (animator.GetBool("goTo Game") == false && animator.GetBool("goTo PauseMenu") == true)
+        {
+            EntitiesVelocityOff();
+        }
+        else if (animator.GetBool("goTo Game") == true && animator.GetBool("goTo PauseMenu") == false)
+        {
+            EntitiesVelocityOn();
+        }
+    }
+
+    void EntitiesVelocityOn()
+    {
+        playerRb.bodyType = RigidbodyType2D.Dynamic;
+
+        enemies = GameObject.FindGameObjectsWithTag("Enemy");
+
+        for (int i = 0; i < enemies.Length; i++)
+        {
+            GameObject enemy = enemies[i];
+            enemiesRb[i].bodyType = RigidbodyType2D.Dynamic;
+        }
+    }
+
+    void EntitiesVelocityOff()
+    {
+        playerRb.bodyType = RigidbodyType2D.Static;
+
+        enemies = GameObject.FindGameObjectsWithTag("Enemy");
+
+        for (int i = 0; i < enemies.Length; i++)
+        {
+            GameObject enemy = enemies[i];
+            enemiesRb[i].bodyType = RigidbodyType2D.Static;
+        }
+    }
+
+    void EntitiesRb()
+    {
+        enemies = GameObject.FindGameObjectsWithTag("Enemy");
+
+        enemiesRb = new Rigidbody2D[enemies.Length];
+
+        for (int i = 0; i < enemies.Length; i++)
+        {
+            GameObject entity = enemies[i];
+
+            enemiesRb[i] = entity.GetComponent<Rigidbody2D>();
+        }
+    }
+
+    public void QuitToMainMenu()
+    {
+        int levelToLoad;
+
+        levelToLoad = SceneManager.GetActiveScene().buildIndex;
+        SceneManager.LoadScene(levelToLoad - 1);
+
+        Debug.Log("Loading" + (levelToLoad - 1) + " scene");
+    }
+
+    public void SaveSlot1()
+    {
+        gameManager.SaveSlot1();
+    }
+    public void SaveSlot2()
+    {
+        gameManager.SaveSlot2();
+    }
+    public void LoadSlot1()
+    {
+        gameManager.LoadSlot1();
+    }
+    public void LoadSlot2()
+    {
+        gameManager.LoadSlot2();
+    }
+
+    public void ResetScoreCounter()
+    {
+        gameManager.scoreTimeCounter = gameManager.initScoreTimeCounter;
+    }
+
+    public void ScoreIncreaseSound(AudioClip whichSound)
+    {
+        scoreIncreaseSound.PlayOneShot(whichSound);
+    }
+}
+
+MenuManager.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+using UnityEngine.SceneManagement;
+
+public class MenuManager : MonoBehaviour
+{
+    public static MenuManager instance = new MenuManager();
+    public GameObject menuManager;
+
+    public Animator canvasAnimator;
+    public AudioSource backgroundMusic;
+
+    private int loadedScene;
+    private bool sceneIsLoaded = true;
+
+    private int enemiesNumber;
+
+    public bool menuSlot1 = false;
+    public bool menuSlot2 = false;
+    void Awake()
+    {
+        menuManager = GameObject.FindWithTag("MainMenuManager");
+        backgroundMusic = GetComponent<AudioSource>();
+
+        GameObject[] objects = GameObject.FindGameObjectsWithTag("MainMenuManager");
+
+        if (objects.Length > 1)
+        {
+            Destroy(this.gameObject);
+        }
+
+        DontDestroyOnLoad(this.gameObject);
+    }
+
+    void Start()
+    {
+        Cursor.visible = false;
+        loadedScene = SceneManager.GetActiveScene().buildIndex;
+
+        backgroundMusic.Play();
+    }
+
+    private void GetCanvas()
+    {
+        canvasAnimator = GameObject.Find("Canvas").GetComponent<Animator>();
+    }
+
+    private void SceneLoading()
+    {
+        if (loadedScene == 0)
+        {
+            GetCanvas();
+        }
+    }
+
+    void FixedUpdate()
+    {
+        if (loadedScene == SceneManager.GetActiveScene().buildIndex && sceneIsLoaded == true)
+        {
+            canvasAnimator.SetBool("goTo MainMenu", false);
+            canvasAnimator.SetBool("goTo PlayGame", true);
+
+            sceneIsLoaded = false;
+        }
+
+        SceneLoading();
+    }
+}
+
+MenuAnimatorHolder.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class MenuAnimatorHolder : MonoBehaviour
+{
+    public GameObject[] MenuButtons;
+
+    public void GetButton()
+    {
+        MenuButtons = GameObject.FindGameObjectsWithTag("Button");
+    }
+}
+
+MenuIndex.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+
+public class MenuIndex : MonoBehaviour
+{
+    public GameObject menuManagerObj;
+    public MenuManager menuManagerScript;
+
+    void Awake()
+    {
+        menuManagerObj = GameObject.FindGameObjectWithTag("MainMenuManager");
+        menuManagerScript = menuManagerObj.GetComponent<MenuManager>();
+    }
+
+    public void PlayGame()
+    {
+        int levelToLoad;
+
+        levelToLoad = SceneManager.GetActiveScene().buildIndex;
+        SceneManager.LoadScene(levelToLoad + 1);
+
+        Debug.Log("Loading" + (levelToLoad + 1) + " scene");
+    }
+
+    public void Quit()
+    {
+        Debug.Log("Quit application");
+        Application.Quit();
+    }
+}
+
+MenuButtonController.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class MenuButtonController : MonoBehaviour
+{
+    public int index;
+    [SerializeField] bool keyDown;
+    [SerializeField] int maxIndex;
+    public AudioSource audioSource;
+
+
+
+    void Start()
+    {
+        audioSource = GetComponent<AudioSource>();
+    }
+    
+    void Update()
+    {
+        if (Input.GetAxis("Vertical") != 0)
+        {
+            if (!keyDown)
+            {
+                if (Input.GetAxis("Vertical") < 0)
+                {
+                    if (index < maxIndex)
+                    {
+                        index++;
+                    }
+                    else
+                    {
+                        index = 0;
+                    }
+                }
+                else if (Input.GetAxis("Vertical") > 0)
+                {
+                    if (index > 0)
+                    {
+                        index--;
+                    }
+                    else
+                    {
+                        index = maxIndex;
+                    }
+                }
+                keyDown = true;
+            }
+        }
+        else
+        {
+            keyDown = false;
+        }
+    }
+}
+
+MenuButton.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class MenuButton : MonoBehaviour
+{
+    [SerializeField] MenuButtonController menuButtonController;
+    [SerializeField] Animator animator;
+    [SerializeField] AnimatorFunctions animatorFunctions;
+    [SerializeField] int thisIndex;
+    public bool selected;
+    public bool pressed;
+
+    void Start()
+    {
+        selected = false;
+        pressed = false;
+    }
+    
+    void Update()
+    {
+        if (menuButtonController.index == thisIndex)
+        {
+            animator.SetBool("selected", true);
+
+            selected = true;
+
+            if (Input.GetAxis("Submit") == 1)
+            {
+                animator.SetBool("pressed", true);
+                pressed = true;
+            }
+            else if (animator.GetBool("pressed"))
+            {
+                animator.SetBool("pressed", false);
+                animatorFunctions.disableOnce = true;
+
+                pressed = false;
+            }
+        }
+        else
+        {
+            animator.SetBool("selected", false);
+
+            selected = false;
+        }
+    }
+}
+
+AnimatorFunctions.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class AnimatorFunctions : MonoBehaviour
+{
+    [SerializeField] MenuButtonController menuButtonController;
+    public bool disableOnce;
+
+    void PlaySoundSelected(AudioClip whichSound)
+    {
+        if (!disableOnce)
+        {
+            menuButtonController.audioSource.PlayOneShot(whichSound);
+            Debug.Log("Menu button sound played!");
+        }
+        else
+        {
+            disableOnce = false;
+        }
+    }
+
+    void PlauSoundPressed(AudioClip whichSound)
+    {
+        if (!disableOnce)
+        {
+            menuButtonController.audioSource.PlayOneShot(whichSound);
+            Debug.Log("Menu button sound played!");
+        }
+        else
+        {
+            disableOnce = false;
+        }
+    }
+}
+
+Enemy.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class Enemy : MonoBehaviour
+{
+    public float speed;
+    private float initSpeed;
+    private Rigidbody2D enemyRb;
+    private Animator enemyAnimator;
+    private CapsuleCollider2D myEnemyCollider;
+
+    public CircleCollider2D pointA;
+    public CircleCollider2D pointB;
+
+    public float run;
+    public float jump;
+    public bool isGrounded;
+    public bool isDashing;
+
+    public Transform groundCheck;
+    public float groundRadiusCheck;
+    public LayerMask whatIsGround;
+
+    public float jumpForce;
+    public bool isObstacle;
+
+    void Start()
+    {
+        enemyRb = GetComponent<Rigidbody2D>();
+        enemyAnimator = GetComponent<Animator>();
+        myEnemyCollider = GetComponent<CapsuleCollider2D>();
+
+        initSpeed = speed;
+        isGrounded = true;
+
+        isObstacle = false;
+    }
+    void FixedUpdate()
+    {
+        enemyRb.velocity = new Vector2(speed * Time.deltaTime, enemyRb.velocity.y);
+        isGrounded = Physics2D.OverlapCircle(groundCheck.position, groundRadiusCheck, whatIsGround);
+
+        Animation();
+        Flip();
+        EnemyMovement();
+    }
+
+    void EnemyMovement()
+    {
+        run = System.Math.Abs(enemyRb.velocity.x);
+        jump = System.Math.Abs(enemyRb.velocity.y);
+
+        if (isObstacle == true && isGrounded == true)
+        {
+            isObstacle = false;
+            enemyRb.velocity = Vector2.up * jumpForce;
+        }
+    }
+
+    void OnTriggerEnter2D(Collider2D other)
+    {
+        if (other.name == pointA.name)
+        {
+            speed = initSpeed;
+        }
+        else if (other.name == pointB.name)
+        {
+            speed = -initSpeed;
+        }
+    }
+
+    private void Flip()
+    {
+        if (enemyRb.velocity.x > 0)
+        {
+            transform.eulerAngles = new Vector3(0, 0, 0);
+        }
+        else if (enemyRb.velocity.x < 0)
+        {
+            transform.eulerAngles = new Vector3(0, 180, 0);
+        }
+    }
+    private void Animation()
+    {
+        enemyAnimator.SetFloat("isRunning", run);
+        enemyAnimator.SetFloat("isJumping", jump);
+        enemyAnimator.SetBool("isGrounded", isGrounded);
+        if (isDashing == true)
+        {
+            enemyAnimator.SetTrigger("isDashing");
+            isDashing = false;
+        }
+    }
+}
+
+ObstacleCheck.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class ObstacleCheck : MonoBehaviour
+{
+    private CircleCollider2D obstacleCheck;
+    public Enemy enemy;
+
+    void Start()
+    {
+        obstacleCheck = GetComponent<CircleCollider2D>();
+    }
+
+    void OnTriggerEnter2D(Collider2D other)
+    {
+        if (other.gameObject.layer == 8)
+        {
+            enemy.isObstacle = true;
+        }
+    }
+}
+
+PauseMenuHolder.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class PauseMenuHolder : MonoBehaviour
+{
+    public GameObject[] MenuButtons;
+
+    public void GetButton()
+    {
+        MenuButtons = GameObject.FindGameObjectsWithTag("Button");
+    }
+}
+
+VerticalPlatform.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class VerticalPlatform : MonoBehaviour {
+
+    public PlatformEffector2D effector;
+    private float waitTime;
+
+    [Range(0, 1f)] public float waitTimeValue;
+
+    private void Start()
+    {
+        effector = GetComponent<PlatformEffector2D>();
+    }
+
+    private void Update()
+    {
+        PlayerPass(waitTimeValue);
+    }
+
+    private void PlayerPass(float time)
+    {
+        if(Input.GetKeyUp(KeyCode.S))
+        {
+            waitTime = time;
+        }
+
+        if (Input.GetKey(KeyCode.S))
+        {
+            if(waitTime <= 0)
+            {
+                effector.rotationalOffset = 0;
+                waitTime = time;
+            }
+            else
+            {
+                waitTime -= Time.deltaTime;
+            }
+        }
+
+        if(Input.GetKey(KeyCode.W))
+        {
+            effector.rotationalOffset = 180f;
+        }
+    }
+}
+
+ParticleSpawn.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class ParticleSpawn : MonoBehaviour
+{
+    public GameObject dustPuff;
+    private ParticleSystem dustParticle;
+
+    void FixedUpdate()
+    {
+        //Instantiate the dust particles when landing after a jump
+        GameObject dustObject = Instantiate(dustPuff, this.transform.position, this.transform.rotation) as GameObject;
+        dustParticle = dustObject.GetComponent<ParticleSystem>();
+    }
+}
+
+MainMenu_Idle.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class MainMenu_Idle : StateMachineBehaviour
+{
+    public GameObject[] menuButtons;
+
+    // OnStateEnter is called when a transition starts and the state machine starts to evaluate this state
+    override public void OnStateEnter(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        menuButtons = animator.GetComponent<MenuAnimatorHolder>().MenuButtons;
+    }
+
+    // OnStateUpdate is called on each Update frame between OnStateEnter and OnStateExit callbacks
+    override public void OnStateUpdate(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        if (menuButtons[0].GetComponent<MenuButton>().pressed == true)
+        {
+            animator.SetBool("goTo MainMenu", false);
+            animator.SetBool("goTo SaveMenu", true);
+        }
+
+        if (menuButtons[1].GetComponent<MenuButton>().pressed == true)
+        {
+            animator.SetBool("goTo MainMenu", false);
+            animator.SetBool("goTo AboutMenu", true);
+        }
+
+        if (menuButtons[2].GetComponent<MenuButton>().pressed == true)
+        {
+            animator.SetBool("goTo MainMenu", false);
+            animator.SetBool("goTo Exit", true);
+        }
+    }
+
+    // OnStateExit is called when a transition ends and the state machine finishes evaluating this state
+    override public void OnStateExit(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        
+    }
+
+    // OnStateMove is called right after Animator.OnAnimatorMove()
+    //override public void OnStateMove(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    //{
+    //    // Implement code that processes and affects root motion
+    //}
+
+    // OnStateIK is called right after Animator.OnAnimatorIK()
+    //override public void OnStateIK(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    //{
+    //    // Implement code that sets up animation IK (inverse kinematics)
+    //}
+}
+
+SaveMenu_Idle.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class SaveMenu_Idle : StateMachineBehaviour
+{
+    public GameObject[] menuButtons;
+    public MenuManager menuManager;
+
+    // OnStateEnter is called when a transition starts and the state machine starts to evaluate this state
+    override public void OnStateEnter(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        menuButtons = animator.GetComponent<MenuAnimatorHolder>().MenuButtons;
+
+        menuManager = animator.GetComponent<MenuIndex>().menuManagerObj.GetComponent<MenuManager>();
+        animator.SetBool("goTo PlayGame", false);
+    }
+
+    // OnStateUpdate is called on each Update frame between OnStateEnter and OnStateExit callbacks
+    override public void OnStateUpdate(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        if (menuButtons[4].GetComponent<MenuButton>().pressed == true)
+        {
+            animator.SetBool("goTo SaveMenu", false);
+            animator.SetBool("goTo PlayGame", true);
+        }
+
+        if (menuButtons[5].GetComponent<MenuButton>().pressed == true)
+        {
+            // MainMenu Load slot 1
+            animator.SetBool("goTo LoadSlot1", true);
+            animator.SetBool("goTo SaveMenu", false);
+
+            menuManager.menuSlot1 = true;
+        }
+
+        if (menuButtons[6].GetComponent<MenuButton>().pressed == true)
+        {
+            // MainMenu Load slot 2
+            animator.SetBool("goTo LoadSlot2", true);
+            animator.SetBool("goTo SaveMenu", false);
+
+            menuManager.menuSlot2 = true;
+        }
+
+        if (menuButtons[7].GetComponent<MenuButton>().pressed == true)
+        {
+            animator.SetBool("goTo SaveMenu", false);
+            animator.SetBool("goTo MainMenu", true);
+        }
+    }
+
+    // OnStateExit is called when a transition ends and the state machine finishes evaluating this state
+    override public void OnStateExit(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        
+    }
+
+    // OnStateMove is called right after Animator.OnAnimatorMove()
+    //override public void OnStateMove(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    //{
+    //    // Implement code that processes and affects root motion
+    //}
+
+    // OnStateIK is called right after Animator.OnAnimatorIK()
+    //override public void OnStateIK(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    //{
+    //    // Implement code that sets up animation IK (inverse kinematics)
+    //}
+}
+
+AboutMenu_Idle.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class AboutMenu_Idle : StateMachineBehaviour
+{
+    public GameObject[] menuButtons;
+
+    // OnStateEnter is called when a transition starts and the state machine starts to evaluate this state
+    override public void OnStateEnter(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        menuButtons = animator.GetComponent<MenuAnimatorHolder>().MenuButtons;
+    }
+
+    // OnStateUpdate is called on each Update frame between OnStateEnter and OnStateExit callbacks
+    override public void OnStateUpdate(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        if (menuButtons[3].GetComponent<MenuButton>().pressed == true)
+        {
+            animator.SetBool("goTo AboutMenu", false);
+            animator.SetBool("goTo MainMenu", true);
+        }
+    }
+
+    // OnStateExit is called when a transition ends and the state machine finishes evaluating this state
+    override public void OnStateExit(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+       
+    }
+
+    // OnStateMove is called right after Animator.OnAnimatorMove()
+    //override public void OnStateMove(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    //{
+    //    // Implement code that processes and affects root motion
+    //}
+
+    // OnStateIK is called right after Animator.OnAnimatorIK()
+    //override public void OnStateIK(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    //{
+    //    // Implement code that sets up animation IK (inverse kinematics)
+    //}
+}
+
+Game_Idle.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class Game_Idle : StateMachineBehaviour
+{
+    public GameObject[] menuButtons;
+    public PauseMenu pauseMenu;
+
+    // OnStateEnter is called when a transition starts and the state machine starts to evaluate this state
+    override public void OnStateEnter(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        menuButtons = animator.GetComponent<PauseMenuHolder>().MenuButtons;
+        pauseMenu = animator.GetComponent<PauseMenu>();
+    }
+
+    // OnStateUpdate is called on each Update frame between OnStateEnter and OnStateExit callbacks
+    override public void OnStateUpdate(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        if (Input.GetKeyDown(KeyCode.Escape) == true)
+        {
+            animator.SetBool("goTo Game", false);
+            animator.SetBool("goTo PauseMenu", true);
+        }
+
+        if (pauseMenu.gameManager.getPoint == true)
+        {
+            animator.SetBool("ScoreIncrease", true);
+        }
+
+        if (pauseMenu.gameManager.scoreToPause == true)
+        {
+            animator.SetBool("goTo Game", false);
+            animator.SetBool("goTo PauseMenu", true);
+
+            pauseMenu.gameManager.scoreToPause = false;
+        }
+    }
+
+    // OnStateExit is called when a transition ends and the state machine finishes evaluating this state
+    override public void OnStateExit(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        pauseMenu.gameManager.scoreTimeCounter = pauseMenu.gameManager.initScoreTimeCounter;
+    }
+
+    // OnStateExit is called when a transition ends and the state machine finishes evaluating this state
+    //override public void OnStateExit(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    //{
+    //    
+    //}
+
+    // OnStateMove is called right after Animator.OnAnimatorMove()
+    //override public void OnStateMove(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    //{
+    //    // Implement code that processes and affects root motion
+    //}
+
+    // OnStateIK is called right after Animator.OnAnimatorIK()
+    //override public void OnStateIK(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    //{
+    //    // Implement code that sets up animation IK (inverse kinematics)
+    //}
+}
+
+PauseMenu_Idle.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class PauseMenu_Idle : StateMachineBehaviour
+{
+    public GameObject[] menuButtons;
+
+    // OnStateEnter is called when a transition starts and the state machine starts to evaluate this state
+    override public void OnStateEnter(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        menuButtons = animator.GetComponent<PauseMenuHolder>().MenuButtons;
+    }
+
+    // OnStateUpdate is called on each Update frame between OnStateEnter and OnStateExit callbacks
+    override public void OnStateUpdate(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        if (menuButtons[0].GetComponent<MenuButton>().pressed == true)
+        {
+            animator.SetBool("goTo PauseMenu", false);
+            animator.SetBool("goTo Game", true);
+        }
+
+        if (menuButtons[1].GetComponent<MenuButton>().pressed == true)
+        {
+            animator.SetBool("goTo PauseMenu", false);
+            animator.SetBool("goTo SaveMenu", true);
+        }
+
+        if (menuButtons[2].GetComponent<MenuButton>().pressed == true)
+        {
+            animator.SetBool("goTo PauseMenu", false);
+            animator.SetBool("goTo LoadMenu", true);
+        }
+
+        if (menuButtons[3].GetComponent<MenuButton>().pressed == true)
+        {
+            animator.SetBool("goTo Game", false);
+            animator.SetBool("goTo PauseMenu", false);
+            animator.SetBool("goTo MainMenu", true);
+        }
+
+
+    }
+
+    // OnStateExit is called when a transition ends and the state machine finishes evaluating this state
+    override public void OnStateExit(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        
+    }
+
+    // OnStateMove is called right after Animator.OnAnimatorMove()
+    //override public void OnStateMove(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    //{
+    //    // Implement code that processes and affects root motion
+    //}
+
+    // OnStateIK is called right after Animator.OnAnimatorIK()
+    //override public void OnStateIK(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    //{
+    //    // Implement code that sets up animation IK (inverse kinematics)
+    //}
+}
+
+ScoreIncrease_Idle.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class ScoreIncrease_Idle : StateMachineBehaviour
+{
+    public PauseMenu pauseMenu;
+
+    // OnStateEnter is called when a transition starts and the state machine starts to evaluate this state
+    override public void OnStateEnter(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        pauseMenu = animator.GetComponent<PauseMenu>();
+        pauseMenu.gameManager.toGame = false;
+    }
+
+    // OnStateUpdate is called on each Update frame between OnStateEnter and OnStateExit callbacks
+    override public void OnStateUpdate(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        pauseMenu.gameManager.ScoreCountdown();
+
+        if (Input.GetKeyDown(KeyCode.Escape) == true)
+        {
+            pauseMenu.gameManager.scoreToPause = true;
+            pauseMenu.gameManager.toGame = true;
+        }
+
+        if (pauseMenu.gameManager.toGame == true)
+        {
+            animator.SetBool("ScoreIncrease", false);
+            animator.SetBool("goTo Game", true);
+        }
+
+        if (pauseMenu.gameManager.getPoint == true)
+        {
+            animator.Play("ScoreIncreaseIdle", 0, 0f);
+            pauseMenu.gameManager.getPoint = false;
+        }
+    }
+
+    // OnStateExit is called when a transition ends and the state machine finishes evaluating this state
+    override public void OnStateExit(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        
+    }
+
+    // OnStateMove is called right after Animator.OnAnimatorMove()
+    //override public void OnStateMove(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    //{
+    //    // Implement code that processes and affects root motion
+    //}
+
+    // OnStateIK is called right after Animator.OnAnimatorIK()
+    //override public void OnStateIK(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    //{
+    //    // Implement code that sets up animation IK (inverse kinematics)
+    //}
+}
+
+pSaveMenu_Idle.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class pSaveMenu_Idle : StateMachineBehaviour
+{
+    public GameObject[] menuButtons;
+
+    // OnStateEnter is called when a transition starts and the state machine starts to evaluate this state
+    override public void OnStateEnter(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        menuButtons = animator.GetComponent<PauseMenuHolder>().MenuButtons;
+    }
+
+    // OnStateUpdate is called on each Update frame between OnStateEnter and OnStateExit callbacks
+    override public void OnStateUpdate(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        if (menuButtons[4].GetComponent<MenuButton>().pressed == true)
+        {
+            animator.SetTrigger("SaveSlot1");
+        }
+
+        if (menuButtons[5].GetComponent<MenuButton>().pressed == true)
+        {
+            animator.SetTrigger("SaveSlot2");
+        }
+
+        if (menuButtons[6].GetComponent<MenuButton>().pressed == true)
+        {
+            animator.SetBool("goTo SaveMenu", false);
+            animator.SetBool("goTo PauseMenu", true);
+        }
+    }
+
+    // OnStateExit is called when a transition ends and the state machine finishes evaluating this state
+    override public void OnStateExit(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+
+    }
+
+    // OnStateMove is called right after Animator.OnAnimatorMove()
+    //override public void OnStateMove(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    //{
+    //    // Implement code that processes and affects root motion
+    //}
+
+    // OnStateIK is called right after Animator.OnAnimatorIK()
+    //override public void OnStateIK(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    //{
+    //    // Implement code that sets up animation IK (inverse kinematics)
+    //}
+}
+
+pLoadMenu_Idle.cs
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class pLoadMenu_Idle : StateMachineBehaviour
+{
+    public GameObject[] menuButtons;
+
+    // OnStateEnter is called when a transition starts and the state machine starts to evaluate this state
+    override public void OnStateEnter(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        menuButtons = animator.GetComponent<PauseMenuHolder>().MenuButtons;
+    }
+
+    // OnStateUpdate is called on each Update frame between OnStateEnter and OnStateExit callbacks
+    override public void OnStateUpdate(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        if (menuButtons[7].GetComponent<MenuButton>().pressed == true)
+        {
+            animator.SetTrigger("LoadSlot1");
+        }
+
+        if (menuButtons[8].GetComponent<MenuButton>().pressed == true)
+        {
+            animator.SetTrigger("LoadSlot2");
+        }
+
+        if (menuButtons[9].GetComponent<MenuButton>().pressed == true)
+        {
+            animator.SetBool("goTo LoadMenu", false);
+            animator.SetBool("goTo PauseMenu", true);
+        }
+    }
+
+    // OnStateExit is called when a transition ends and the state machine finishes evaluating this state
+    override public void OnStateExit(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+
+    }
+
+    // OnStateMove is called right after Animator.OnAnimatorMove()
+    //override public void OnStateMove(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    //{
+    //    // Implement code that processes and affects root motion
+    //}
+
+    // OnStateIK is called right after Animator.OnAnimatorIK()
+    //override public void OnStateIK(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    //{
+    //    // Implement code that sets up animation IK (inverse kinematics)
+    //}
+}
